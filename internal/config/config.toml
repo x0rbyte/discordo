@@ -25,7 +25,8 @@ messages_limit = 50
 [timestamps]
 enabled = true
 # https://pkg.go.dev/time#Layout
-format = "3:04PM"
+# Format: "Month Day Time" (e.g., "Dec 30 3:04PM")
+format = "Jan 02 3:04PM"
 
 [notifications]
 enabled = true
@@ -41,11 +42,18 @@ only_on_ping = true
 focus_guilds_tree = "Ctrl+G"
 focus_messages_list = "Ctrl+T"
 focus_message_input = "Ctrl+I"
+focus_members_list = "Ctrl+M"
 # Cycle focus between the widgets.
 focus_previous = "Ctrl+H"
 focus_next = "Ctrl+L"
 # Hide/show the guilds tree.
 toggle_guilds_tree = "Ctrl+B"
+# Hide/show the members list.
+toggle_members_list = "Ctrl+U"
+# Show friends list modal.
+show_friends_list = "Ctrl+F"
+# Close the currently open DM channel (removes from tree).
+close_current_dm = "Ctrl+X"
 quit = "Ctrl+C"
 # Log out and remove the authentication token from keyring.
 # Requires re-login upon restart.
@@ -62,6 +70,8 @@ select_current = "Enter"
 yank_id = "Rune[i]"
 collapse_parent_node = "Rune[-]"
 move_to_parent_node = "Rune[p]"
+# Close/remove a DM channel from the tree (press on a DM channel)
+close_dm = "Rune[x]"
 
 # Only while focusing on sent messages
 [keys.messages_list]
@@ -105,14 +115,25 @@ open_file_picker = "Ctrl+Rune[\\]"
 up = "Ctrl+P"
 down = "Ctrl+N"
 
+[keys.members_list]
+select_previous = "Rune[k]"
+select_next = "Rune[j]"
+select_first = "Rune[g]"
+select_last = "Rune[G]"
+initiate_dm = "Enter"
+
+[keys.friends_list]
+select_previous = "Rune[k]"
+select_next = "Rune[j]"
+select_first = "Rune[g]"
+select_last = "Rune[G]"
+initiate_dm = "Enter"
+cancel = "Esc"
+
 # style = { foreground = "", background = "", attributes = "" or [""] }
 [theme.title]
 alignment = "left" # `"left"`, `"center"`, or `"right"`.
-normal_style = { attributes = "dim" }
-active_style = { foreground = "green", attributes = "bold" }
 
-[theme.footer]
-alignment = "left"
 normal_style = { attributes = "dim" }
 active_style = { foreground = "green", attributes = "bold" }
 

@@ -12,14 +12,20 @@ type (
 		FocusGuildsTree   string `toml:"focus_guilds_tree"`
 		FocusMessagesList string `toml:"focus_messages_list"`
 		FocusMessageInput string `toml:"focus_message_input"`
+		FocusMembersList  string `toml:"focus_members_list"`
 		FocusPrevious     string `toml:"focus_previous"`
 		FocusNext         string `toml:"focus_next"`
 		ToggleGuildsTree  string `toml:"toggle_guilds_tree"`
+		ToggleMembersList string `toml:"toggle_members_list"`
+		ShowFriendsList   string `toml:"show_friends_list"`
+		CloseCurrentDM    string `toml:"close_current_dm"`
 
 		GuildsTree   GuildsTreeKeys   `toml:"guilds_tree"`
 		MessagesList MessagesListKeys `toml:"messages_list"`
 		MessageInput MessageInputKeys `toml:"message_input"`
 		MentionsList MentionsListKeys `toml:"mentions_list"`
+		MembersList  MembersListKeys  `toml:"members_list"`
+		FriendsList  FriendsListKeys  `toml:"friends_list"`
 
 		Logout string `toml:"logout"`
 		Quit   string `toml:"quit"`
@@ -32,6 +38,7 @@ type (
 
 		CollapseParentNode string `toml:"collapse_parent_node"`
 		MoveToParentNode   string `toml:"move_to_parent_node"`
+		CloseDM            string `toml:"close_dm"`
 	}
 
 	MessagesListKeys struct {
@@ -64,5 +71,16 @@ type (
 	MentionsListKeys struct {
 		Up   string `toml:"up"`
 		Down string `toml:"down"`
+	}
+
+	MembersListKeys struct {
+		NavigationKeys
+		InitiateDM string `toml:"initiate_dm"`
+	}
+
+	FriendsListKeys struct {
+		NavigationKeys
+		InitiateDM string `toml:"initiate_dm"`
+		Cancel     string `toml:"cancel"`
 	}
 )
