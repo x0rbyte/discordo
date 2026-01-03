@@ -17,11 +17,16 @@ const (
 	BrowserVersion   = "143.0.0.0"
 	BrowserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " + Browser + "/" + BrowserVersion + " Safari/537.36"
 
+	// ClientBuildNumber is the fallback build number if auto-fetch fails
+	// The actual build number is fetched automatically from Discord's web client
 	ClientBuildNumber = 482285
 	Locale            = discord.EnglishUS
 )
 
 func IdentifyProperties() gateway.IdentifyProperties {
+	// Get the latest build number (cached for 1 hour)
+	buildNumber := GetLatestBuildNumber()
+
 	return gateway.IdentifyProperties{
 		gateway.IdentifyDevice: "",
 
@@ -32,7 +37,7 @@ func IdentifyProperties() gateway.IdentifyProperties {
 		"browser_version":       BrowserVersion,
 		"browser_user_agent":    BrowserUserAgent,
 
-		"client_build_number":         ClientBuildNumber,
+		"client_build_number":         buildNumber,
 		"client_event_source":         nil,
 		"client_app_state":            "focused",
 		"client_launch_id":            uuid.NewString(),
