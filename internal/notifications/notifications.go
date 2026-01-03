@@ -20,9 +20,27 @@ func Notify(state *ningen.State, message *gateway.MessageCreateEvent, cfg *confi
 		return nil
 	}
 
-	mentions := state.MessageMentions(&message.Message)
-	if mentions == 0 {
+	// Don't notify for our own messages
+	me, err := state.Cabinet.Me()
+	if err == nil && message.Author.ID == me.ID {
 		return nil
+	}
+
+	// Check if this is a DM
+	channel, err := state.Cabinet.Channel(message.ChannelID)
+	if err != nil {
+		return fmt.Errorf("failed to get channel from state: %w", err)
+	}
+	isDM := channel.Type == discord.DirectMessage || channel.Type == discord.GroupDM
+
+	mentions := state.MessageMentions(&message.Message)
+
+	// If only_on_ping is enabled, skip notification if not mentioned
+	// Exception: always notify for DMs if notify_on_dm is enabled
+	if cfg.Notifications.OnlyOnPing && mentions == 0 {
+		if !isDM || !cfg.Notifications.NotifyOnDM {
+			return nil
+		}
 	}
 
 	// Handle sent files
@@ -36,11 +54,6 @@ func Notify(state *ningen.State, message *gateway.MessageCreateEvent, cfg *confi
 	}
 
 	title := message.Author.DisplayOrUsername()
-
-	channel, err := state.Cabinet.Channel(message.ChannelID)
-	if err != nil {
-		return fmt.Errorf("failed to get channel from state: %w", err)
-	}
 
 	if channel.GuildID.IsValid() {
 		guild, err := state.Cabinet.Guild(channel.GuildID)
@@ -65,7 +78,8 @@ func Notify(state *ningen.State, message *gateway.MessageCreateEvent, cfg *confi
 		slog.Info("failed to get profile image from cache for notification", "err", err, "hash", hash)
 	}
 
-	shouldChime := cfg.Notifications.Sound.Enabled && (!cfg.Notifications.Sound.OnlyOnPing || mentions.Has(ningen.MessageMentions|ningen.MessageNotifies))
+	// Play sound if enabled AND (not only_on_ping OR mentioned OR (is DM and notify_on_dm))
+	shouldChime := cfg.Notifications.Sound.Enabled && (!cfg.Notifications.Sound.OnlyOnPing || mentions.Has(ningen.MessageMentions|ningen.MessageNotifies) || (isDM && cfg.Notifications.NotifyOnDM))
 	if err := sendDesktopNotification(title, content, imagePath, shouldChime, cfg.Notifications.Duration); err != nil {
 		return err
 	}

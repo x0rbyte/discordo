@@ -207,6 +207,69 @@ func (ml *messagesList) drawDefaultMessage(w io.Writer, message discord.Message)
 			fmt.Fprintf(w, "[%s:%s]%s[-:-]", fg, bg, a.Filename)
 		}
 	}
+
+	// Render embeds (from bots, etc.)
+	for _, embed := range message.Embeds {
+		ml.drawEmbed(w, embed)
+	}
+}
+
+func (ml *messagesList) drawEmbed(w io.Writer, embed discord.Embed) {
+	fmt.Fprintln(w)
+
+	// Draw embed border indicator
+	io.WriteString(w, "[::d]│[::D] ")
+
+	// Embed author
+	if embed.Author != nil && embed.Author.Name != "" {
+		fmt.Fprintf(w, "[::b]%s[::B]\n[::d]│[::D] ", tview.Escape(embed.Author.Name))
+	}
+
+	// Embed title with URL if present
+	if embed.Title != "" {
+		if embed.URL != "" {
+			fmt.Fprintf(w, "[::bu]%s[::BU] (%s)\n[::d]│[::D] ", tview.Escape(embed.Title), embed.URL)
+		} else {
+			fmt.Fprintf(w, "[::b]%s[::B]\n[::d]│[::D] ", tview.Escape(embed.Title))
+		}
+	}
+
+	// Embed description
+	if embed.Description != "" {
+		// Description might have newlines, so split and add border to each line
+		lines := strings.Split(embed.Description, "\n")
+		for i, line := range lines {
+			if i > 0 {
+				fmt.Fprint(w, "\n[::d]│[::D] ")
+			}
+			fmt.Fprint(w, tview.Escape(line))
+		}
+		fmt.Fprint(w, "\n[::d]│[::D] ")
+	}
+
+	// Embed fields
+	for _, field := range embed.Fields {
+		fmt.Fprintf(w, "\n[::d]│[::D] [::b]%s[::B]\n[::d]│[::D] %s", tview.Escape(field.Name), tview.Escape(field.Value))
+	}
+
+	// Embed footer
+	if embed.Footer != nil && embed.Footer.Text != "" {
+		fmt.Fprintf(w, "\n[::d]│ %s[::D]", tview.Escape(embed.Footer.Text))
+	}
+
+	// Embed image URL
+	if embed.Image != nil && embed.Image.URL != "" {
+		fg := ml.cfg.Theme.MessagesList.URLStyle.GetForeground()
+		bg := ml.cfg.Theme.MessagesList.URLStyle.GetBackground()
+		fmt.Fprintf(w, "\n[::d]│[::D] [%s:%s]Image: %s[-:-]", fg, bg, embed.Image.URL)
+	}
+
+	// Embed thumbnail URL
+	if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
+		fg := ml.cfg.Theme.MessagesList.URLStyle.GetForeground()
+		bg := ml.cfg.Theme.MessagesList.URLStyle.GetBackground()
+		fmt.Fprintf(w, "\n[::d]│[::D] [%s:%s]Thumbnail: %s[-:-]", fg, bg, embed.Thumbnail.URL)
+	}
 }
 
 func (ml *messagesList) drawForwardedMessage(w io.Writer, message discord.Message) {
@@ -408,6 +471,30 @@ func (ml *messagesList) open() {
 		urls = extractURLs(msg.Content)
 	}
 
+	// Extract URLs from embeds
+	for _, embed := range msg.Embeds {
+		// Main embed URL
+		if embed.URL != "" {
+			urls = append(urls, embed.URL)
+		}
+		// Author URL
+		if embed.Author != nil && embed.Author.URL != "" {
+			urls = append(urls, embed.Author.URL)
+		}
+		// Image URL
+		if embed.Image != nil && embed.Image.URL != "" {
+			urls = append(urls, embed.Image.URL)
+		}
+		// Thumbnail URL
+		if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
+			urls = append(urls, embed.Thumbnail.URL)
+		}
+		// Video URL
+		if embed.Video != nil && embed.Video.URL != "" {
+			urls = append(urls, embed.Video.URL)
+		}
+	}
+
 	if len(urls) == 0 && len(msg.Attachments) == 0 {
 		return
 	}
@@ -452,14 +539,16 @@ func extractURLs(content string) []string {
 }
 
 func (ml *messagesList) showAttachmentsList(urls []string, attachments []discord.Attachment) {
+	closeModal := func() {
+		app.chatView.RemovePage(attachmentsListPageName).SwitchToPage(flexPageName)
+		app.SetFocus(ml)
+	}
+
 	list := tview.NewList().
 		SetWrapAround(true).
 		SetHighlightFullLine(true).
 		ShowSecondaryText(false).
-		SetDoneFunc(func() {
-			app.chatView.RemovePage(attachmentsListPageName).SwitchToPage(flexPageName)
-			app.SetFocus(ml)
-		})
+		SetDoneFunc(closeModal)
 	list.
 		SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Name() {
@@ -471,6 +560,9 @@ func (ml *messagesList) showAttachmentsList(urls []string, attachments []discord
 				return tcell.NewEventKey(tcell.KeyHome, "", tcell.ModNone)
 			case ml.cfg.Keys.MessagesList.SelectLast:
 				return tcell.NewEventKey(tcell.KeyEnd, "", tcell.ModNone)
+			case ml.cfg.Keys.MessagesList.Cancel:
+				closeModal()
+				return nil
 			}
 
 			return event
@@ -478,18 +570,22 @@ func (ml *messagesList) showAttachmentsList(urls []string, attachments []discord
 	list.Box = ui.ConfigureBox(list.Box, &ml.cfg.Theme)
 
 	for i, a := range attachments {
+		attachment := a // Capture loop variable
 		list.AddItem(a.Filename, "", rune('a'+i), func() {
-			if strings.HasPrefix(a.ContentType, "image/") {
-				go ml.openAttachment(a)
+			closeModal()
+			if strings.HasPrefix(attachment.ContentType, "image/") {
+				go ml.openAttachment(attachment)
 			} else {
-				go ml.openURL(a.URL)
+				go ml.openURL(attachment.URL)
 			}
 		})
 	}
 
 	for i, u := range urls {
+		url := u // Capture loop variable
 		list.AddItem(u, "", rune('1'+i), func() {
-			go ml.openURL(u)
+			closeModal()
+			go ml.openURL(url)
 		})
 	}
 

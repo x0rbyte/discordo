@@ -231,8 +231,21 @@ func onMessageCreate(message *gateway.MessageCreateEvent) {
 		slog.Error("failed to notify", "err", err, "channel_id", message.ChannelID, "message_id", message.ID)
 	}
 
-	// Update the channel style in the tree (makes it bold if unread)
-	go app.chatView.guildsTree.updateChannelStyle(message.ChannelID, message.GuildID)
+	// Check if this is a DM and handle it specially
+	channel, err := discordState.Cabinet.Channel(message.ChannelID)
+	isDM := err == nil && (channel.Type == discord.DirectMessage || channel.Type == discord.GroupDM)
+
+	if isDM {
+		// For DMs, always bold and move to top when message arrives (unless currently viewing)
+		if !isCurrentChannel {
+			go app.chatView.guildsTree.updateDMStyleAndMove(message.ChannelID, true)
+		} else {
+			go app.chatView.guildsTree.moveDMToTopOnMessage(message.ChannelID)
+		}
+	} else {
+		// For guild channels, update style based on read state
+		go app.chatView.guildsTree.updateChannelStyle(message.ChannelID, message.GuildID)
+	}
 }
 
 func onMessageUpdate(message *gateway.MessageUpdateEvent) {

@@ -185,6 +185,13 @@ func (mi *messageInput) send() {
 		data.Content = text
 		if _, err := discordState.SendMessageComplex(app.chatView.selectedChannel.ID, *data); err != nil {
 			slog.Error("failed to send message in channel", "channel_id", app.chatView.selectedChannel.ID, "err", err)
+		} else {
+			// If we sent a message in a DM, move it to the top of the DM list
+			if app.chatView.selectedChannel != nil &&
+			   (app.chatView.selectedChannel.Type == discord.DirectMessage ||
+			    app.chatView.selectedChannel.Type == discord.GroupDM) {
+				go app.chatView.guildsTree.moveDMToTopOnMessage(app.chatView.selectedChannel.ID)
+			}
 		}
 	}
 

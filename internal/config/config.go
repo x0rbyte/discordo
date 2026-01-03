@@ -21,9 +21,11 @@ type (
 	}
 
 	Notifications struct {
-		Enabled  bool  `toml:"enabled"`
-		Duration int   `toml:"duration"`
-		Sound    Sound `toml:"sound"`
+		Enabled     bool  `toml:"enabled"`
+		Duration    int   `toml:"duration"`
+		OnlyOnPing  bool  `toml:"only_on_ping"`
+		NotifyOnDM  bool  `toml:"notify_on_dm"`
+		Sound       Sound `toml:"sound"`
 	}
 
 	Sound struct {

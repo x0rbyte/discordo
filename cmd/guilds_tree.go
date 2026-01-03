@@ -481,6 +481,121 @@ func (gt *guildsTree) yankID() {
 	}
 }
 
+func (gt *guildsTree) updateDMStyleAndMove(channelID discord.ChannelID, forceUnread bool) {
+	slog.Debug("updating DM style and moving to top", "channel_id", channelID, "force_unread", forceUnread)
+
+	// Find the DM node
+	var dmNode *tview.TreeNode
+	gt.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		if node.GetReference() == channelID {
+			dmNode = node
+			return false
+		}
+		return true
+	})
+
+	if dmNode == nil {
+		slog.Debug("DM node not found", "channel_id", channelID)
+		return
+	}
+
+	app.QueueUpdateDraw(func() {
+		// Force the style to bold (unread)
+		if forceUnread {
+			dmNode.SetTextStyle(gt.unreadStyle(ningen.ChannelUnread))
+			slog.Debug("forced DM to bold/unread", "channel_id", channelID)
+		} else {
+			dmNode.SetTextStyle(gt.getChannelNodeStyle(channelID))
+		}
+
+		// Move to top
+		gt.moveDMToTop(dmNode, channelID)
+	})
+}
+
+func (gt *guildsTree) moveDMToTopOnMessage(channelID discord.ChannelID) {
+	slog.Debug("moving DM to top on message", "channel_id", channelID)
+
+	// Find the DM node and the Direct Messages parent
+	var dmNode *tview.TreeNode
+	gt.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		if node.GetReference() == channelID {
+			dmNode = node
+			return false
+		}
+		return true
+	})
+
+	if dmNode == nil {
+		slog.Debug("DM node not found", "channel_id", channelID)
+		return
+	}
+
+	app.QueueUpdateDraw(func() {
+		gt.moveDMToTop(dmNode, channelID)
+	})
+}
+
+func (gt *guildsTree) moveDMToTop(dmNode *tview.TreeNode, channelID discord.ChannelID) {
+	slog.Debug("moving DM to top", "channel_id", channelID)
+
+	// Find the Direct Messages parent node
+	var dmParentNode *tview.TreeNode
+	gt.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		if node.GetText() == "Direct Messages" && parent == gt.GetRoot() {
+			dmParentNode = node
+			return false
+		}
+		return true
+	})
+
+	if dmParentNode == nil {
+		slog.Error("Direct Messages node not found")
+		return
+	}
+
+	// Find this DM node's current position in the parent's children
+	children := dmParentNode.GetChildren()
+	var nodeIndex = -1
+	for i, child := range children {
+		if child == dmNode {
+			nodeIndex = i
+			break
+		}
+	}
+
+	if nodeIndex == -1 {
+		slog.Error("DM node not found in parent's children")
+		return
+	}
+
+	// If it's already at the top, nothing to do
+	if nodeIndex == 0 {
+		return
+	}
+
+	// Get a snapshot of all children BEFORE removing any
+	allChildren := make([]*tview.TreeNode, len(children))
+	copy(allChildren, children)
+
+	// Clear all children
+	for _, child := range allChildren {
+		dmParentNode.RemoveChild(child)
+	}
+
+	// Add the DM node first
+	dmParentNode.AddChild(dmNode)
+
+	// Add the rest of the children in their original order
+	for _, child := range allChildren {
+		if child != dmNode {
+			dmParentNode.AddChild(child)
+		}
+	}
+
+	slog.Debug("DM moved to top", "channel_id", channelID)
+}
+
 func (gt *guildsTree) updateChannelStyle(channelID discord.ChannelID, guildID discord.GuildID) {
 	slog.Debug("updating channel style", "channel_id", channelID, "guild_id", guildID)
 
@@ -507,7 +622,7 @@ func (gt *guildsTree) updateChannelStyle(channelID discord.ChannelID, guildID di
 			})
 		}
 	} else {
-		// DM channel - find it in the Direct Messages node
+		// DM channel - find it in the Direct Messages node and update style
 		gt.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
 			if node.GetReference() == channelID {
 				node.SetTextStyle(gt.getChannelNodeStyle(channelID))

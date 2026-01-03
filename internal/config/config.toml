@@ -30,10 +30,15 @@ format = "Jan 02 3:04PM"
 
 [notifications]
 enabled = true
+# Only show notifications when you're mentioned/pinged. Set to false to get notified on all messages.
+only_on_ping = true
+# Always notify on DM messages regardless of only_on_ping setting.
+notify_on_dm = true
 # The duration of the sound. Set the value to `0` to use default duration. This is only supported on Unix and Windows.
 duration = 0
 [notifications.sound]
 enabled = true
+# Only play sound when you're mentioned/pinged. Set to false to play sound on all notifications.
 only_on_ping = true
 
 # Global shortcuts
