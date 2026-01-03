@@ -20,6 +20,8 @@ type (
 		ShowFriendsList   string `toml:"show_friends_list"`
 		CloseCurrentDM    string `toml:"close_current_dm"`
 		ToggleMute        string `toml:"toggle_mute"`
+		JoinServer        string `toml:"join_server"`
+		ShowPinnedMessages string `toml:"show_pinned_messages"`
 
 		GuildsTree   GuildsTreeKeys   `toml:"guilds_tree"`
 		MessagesList MessagesListKeys `toml:"messages_list"`
@@ -40,6 +42,7 @@ type (
 		CollapseParentNode string `toml:"collapse_parent_node"`
 		MoveToParentNode   string `toml:"move_to_parent_node"`
 		CloseDM            string `toml:"close_dm"`
+		LeaveGuild         string `toml:"leave_guild"`
 	}
 
 	MessagesListKeys struct {
@@ -54,6 +57,8 @@ type (
 		DeleteConfirm string `toml:"delete_confirm"`
 		Open          string `toml:"open"`
 		AddReaction   string `toml:"add_reaction"`
+		PinMessage    string `toml:"pin_message"`
+		UnpinMessage  string `toml:"unpin_message"`
 
 		YankContent string `toml:"yank_content"`
 		YankURL     string `toml:"yank_url"`

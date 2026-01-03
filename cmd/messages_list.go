@@ -196,6 +196,10 @@ func (ml *messagesList) drawDefaultMessage(w io.Writer, message discord.Message)
 		io.WriteString(w, " [::d](edited)[::D]")
 	}
 
+	if message.Pinned {
+		io.WriteString(w, " [::d](pinned)[::D]")
+	}
+
 	// Render reactions
 	if len(message.Reactions) > 0 {
 		ml.drawReactions(w, message.Reactions)
@@ -383,6 +387,10 @@ func (ml *messagesList) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		ml.open()
 	case ml.cfg.Keys.MessagesList.AddReaction:
 		ml.showReactionPicker()
+	case ml.cfg.Keys.MessagesList.PinMessage:
+		ml.pinMessage()
+	case ml.cfg.Keys.MessagesList.UnpinMessage:
+		ml.unpinMessage()
 	case ml.cfg.Keys.MessagesList.Reply:
 		ml.reply(false)
 	case ml.cfg.Keys.MessagesList.ReplyMention:
@@ -891,6 +899,96 @@ func (ml *messagesList) delete() {
 
 	// No need to redraw messages after deletion, onMessageDelete will do
 	// its work after the event returns
+}
+
+func (ml *messagesList) pinMessage() {
+	msg, err := ml.selectedMessage()
+	if err != nil {
+		slog.Error("failed to get selected message", "err", err)
+		return
+	}
+
+	slog.Info("attempting to pin message", "message_id", msg.ID, "channel_id", msg.ChannelID, "currently_pinned", msg.Pinned)
+
+	// Check permissions for guild channels
+	if msg.GuildID.IsValid() && !discordState.HasPermissions(msg.ChannelID, discord.PermissionManageMessages) {
+		slog.Error("failed to pin message; missing ManageMessages permission", "channel_id", msg.ChannelID, "message_id", msg.ID)
+		return
+	}
+
+	// Pin the message (API will handle if already pinned)
+	go func() {
+		slog.Info("calling PinMessage API", "channel_id", msg.ChannelID, "message_id", msg.ID)
+		if err := discordState.PinMessage(msg.ChannelID, msg.ID, ""); err != nil {
+			slog.Error("failed to pin message", "channel_id", msg.ChannelID, "message_id", msg.ID, "err", err)
+			return
+		}
+
+		slog.Info("successfully pinned message", "message_id", msg.ID)
+
+		// Update the message in state
+		msg.Pinned = true
+		if err := discordState.MessageSet(msg, true); err != nil {
+			slog.Error("failed to update message in state", "err", err)
+		}
+
+		// Refresh the message list to show the pinned indicator
+		messages, err := discordState.Cabinet.Messages(msg.ChannelID)
+		if err != nil {
+			slog.Error("failed to get messages after pin", "err", err)
+			return
+		}
+
+		app.QueueUpdateDraw(func() {
+			ml.reset()
+			ml.drawMessages(messages)
+		})
+	}()
+}
+
+func (ml *messagesList) unpinMessage() {
+	msg, err := ml.selectedMessage()
+	if err != nil {
+		slog.Error("failed to get selected message", "err", err)
+		return
+	}
+
+	slog.Info("attempting to unpin message", "message_id", msg.ID, "channel_id", msg.ChannelID, "currently_pinned", msg.Pinned)
+
+	// Check permissions for guild channels
+	if msg.GuildID.IsValid() && !discordState.HasPermissions(msg.ChannelID, discord.PermissionManageMessages) {
+		slog.Error("failed to unpin message; missing ManageMessages permission", "channel_id", msg.ChannelID, "message_id", msg.ID)
+		return
+	}
+
+	// Unpin the message (API will handle if not pinned)
+	go func() {
+		slog.Info("calling UnpinMessage API", "channel_id", msg.ChannelID, "message_id", msg.ID)
+		if err := discordState.UnpinMessage(msg.ChannelID, msg.ID, ""); err != nil {
+			slog.Error("failed to unpin message", "channel_id", msg.ChannelID, "message_id", msg.ID, "err", err)
+			return
+		}
+
+		slog.Info("successfully unpinned message", "message_id", msg.ID)
+
+		// Update the message in state
+		msg.Pinned = false
+		if err := discordState.MessageSet(msg, true); err != nil {
+			slog.Error("failed to update message in state", "err", err)
+		}
+
+		// Refresh the message list to show the pinned indicator removed
+		messages, err := discordState.Cabinet.Messages(msg.ChannelID)
+		if err != nil {
+			slog.Error("failed to get messages after unpin", "err", err)
+			return
+		}
+
+		app.QueueUpdateDraw(func() {
+			ml.reset()
+			ml.drawMessages(messages)
+		})
+	}()
 }
 
 func (ml *messagesList) requestGuildMembers(gID discord.GuildID, ms []discord.Message) {

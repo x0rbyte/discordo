@@ -19,6 +19,8 @@ const (
 	confirmModalPageName    = "confirmModal"
 	friendsListPageName     = "friendsList"
 	reactionPickerPageName  = "reactionPicker"
+	joinServerPageName      = "joinServer"
+	pinnedMessagesPageName  = "pinnedMessages"
 )
 
 type chatView struct {
@@ -231,6 +233,12 @@ func (cv *chatView) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case cv.cfg.Keys.ToggleMute:
 		cv.toggleMuteCurrentChannel()
 		return nil
+	case cv.cfg.Keys.JoinServer:
+		cv.showJoinServer()
+		return nil
+	case cv.cfg.Keys.ShowPinnedMessages:
+		cv.showPinnedMessages()
+		return nil
 	}
 
 	return event
@@ -269,6 +277,197 @@ func (cv *chatView) showFriendsList() {
 		ShowPage(flexPageName)
 
 	go fl.show()
+}
+
+func (cv *chatView) showJoinServer() {
+	previousFocus := cv.app.GetFocus()
+
+	var inviteCode string
+	form := tview.NewForm()
+	form.AddInputField("Invite Code:", "", 30, func(text string) {
+		inviteCode = text
+	})
+	form.AddButton("Join", func() {
+		if inviteCode == "" {
+			return
+		}
+		cv.RemovePage(joinServerPageName).SwitchToPage(flexPageName)
+		cv.app.SetFocus(previousFocus)
+		go cv.joinServer(inviteCode)
+	})
+	form.AddButton("Cancel", func() {
+		cv.RemovePage(joinServerPageName).SwitchToPage(flexPageName)
+		cv.app.SetFocus(previousFocus)
+	})
+
+	form.Box = ui.ConfigureBox(form.Box, &cv.cfg.Theme)
+	form.SetTitle("Join Server")
+
+	cv.AddAndSwitchToPage(joinServerPageName, ui.Centered(form, 50, 10), true).
+		ShowPage(flexPageName)
+}
+
+func (cv *chatView) joinServer(inviteCode string) {
+	slog.Info("joining server", "invite_code", inviteCode)
+
+	result, err := discordState.JoinInvite(inviteCode)
+	if err != nil {
+		slog.Error("failed to join server", "err", err, "invite_code", inviteCode)
+		return
+	}
+
+	slog.Info("successfully joined server", "guild_id", result.Guild.ID, "guild_name", result.Guild.Name)
+
+	// Add the guild to the tree on UI thread
+	cv.app.QueueUpdateDraw(func() {
+		root := cv.guildsTree.GetRoot()
+		cv.guildsTree.createGuildNode(root, result.Guild)
+	})
+}
+
+func (cv *chatView) showPinnedMessages() {
+	if cv.selectedChannel == nil {
+		slog.Debug("showPinnedMessages: no channel selected")
+		return
+	}
+
+	previousFocus := cv.app.GetFocus()
+	channelID := cv.selectedChannel.ID
+
+	list := tview.NewList().
+		SetWrapAround(true).
+		SetHighlightFullLine(true).
+		ShowSecondaryText(true)
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Name() {
+		case cv.cfg.Keys.MessagesList.SelectPrevious:
+			return tcell.NewEventKey(tcell.KeyUp, "", tcell.ModNone)
+		case cv.cfg.Keys.MessagesList.SelectNext:
+			return tcell.NewEventKey(tcell.KeyDown, "", tcell.ModNone)
+		case cv.cfg.Keys.MessagesList.SelectFirst:
+			return tcell.NewEventKey(tcell.KeyHome, "", tcell.ModNone)
+		case cv.cfg.Keys.MessagesList.SelectLast:
+			return tcell.NewEventKey(tcell.KeyEnd, "", tcell.ModNone)
+		case "Esc", cv.cfg.Keys.MessagesList.Cancel:
+			cv.RemovePage(pinnedMessagesPageName).SwitchToPage(flexPageName)
+			cv.app.SetFocus(previousFocus)
+			return nil
+		}
+		return event
+	})
+
+	list.Box = ui.ConfigureBox(list.Box, &cv.cfg.Theme)
+	list.SetTitle("Pinned Messages")
+
+	cv.AddAndSwitchToPage(pinnedMessagesPageName, ui.Centered(list, 80, 20), true).
+		ShowPage(flexPageName)
+
+	// Fetch pinned messages in background
+	go func() {
+		messages, err := discordState.PinnedMessages(channelID)
+		if err != nil {
+			slog.Error("failed to get pinned messages", "err", err, "channel_id", channelID)
+			cv.app.QueueUpdateDraw(func() {
+				list.AddItem("Failed to load pinned messages", "", 0, nil)
+			})
+			return
+		}
+
+		if len(messages) == 0 {
+			cv.app.QueueUpdateDraw(func() {
+				list.AddItem("No pinned messages", "", 0, nil)
+			})
+			return
+		}
+
+		cv.app.QueueUpdateDraw(func() {
+			for i, msg := range messages {
+				// Format: "Author: Content preview"
+				author := msg.Author.DisplayOrUsername()
+				content := msg.Content
+				if len(content) > 60 {
+					content = content[:57] + "..."
+				}
+				if content == "" {
+					content = "[attachment or embed]"
+				}
+
+				mainText := fmt.Sprintf("%s: %s", author, content)
+				timestamp := msg.Timestamp.Time().Format("Jan 02 3:04PM")
+
+				// Capture the full message for the detail view
+				fullMsg := msg
+
+				list.AddItem(mainText, timestamp, rune('1'+i), func() {
+					// Show detail view with options
+					cv.RemovePage(pinnedMessagesPageName).SwitchToPage(flexPageName)
+					cv.showPinnedMessageDetail(fullMsg, previousFocus)
+				})
+			}
+		})
+	}()
+}
+
+func (cv *chatView) showPinnedMessageDetail(msg discord.Message, previousFocus tview.Primitive) {
+	// Create a text view to show the full message
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWordWrap(true).
+		SetScrollable(true)
+
+	// Format the full message
+	author := msg.Author.DisplayOrUsername()
+	timestamp := msg.Timestamp.Time().Format("Jan 02, 2006 at 3:04PM")
+	content := msg.Content
+	if content == "" {
+		content = "[No text content]"
+	}
+
+	fmt.Fprintf(textView, "[::b]%s[::B]\n", author)
+	fmt.Fprintf(textView, "[::d]%s[::D]\n\n", timestamp)
+	fmt.Fprintf(textView, "%s\n\n", content)
+
+	if len(msg.Attachments) > 0 {
+		fmt.Fprintf(textView, "[::d]Attachments:[::D]\n")
+		for _, att := range msg.Attachments {
+			fmt.Fprintf(textView, "  • %s\n", att.Filename)
+		}
+		fmt.Fprintln(textView)
+	}
+
+	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Name() {
+		case "Esc":
+			cv.RemovePage(pinnedMessagesPageName).SwitchToPage(flexPageName)
+			cv.app.SetFocus(previousFocus)
+			return nil
+		case "Rune[u]", "Rune[U]":
+			// Unpin this message
+			cv.RemovePage(pinnedMessagesPageName).SwitchToPage(flexPageName)
+			cv.app.SetFocus(previousFocus)
+			go cv.unpinMessageByID(msg.ChannelID, msg.ID)
+			return nil
+		}
+		return event
+	})
+
+	textView.Box = ui.ConfigureBox(textView.Box, &cv.cfg.Theme)
+	textView.SetTitle("Pinned Message (Press U to unpin, Esc to close)")
+
+	cv.AddAndSwitchToPage(pinnedMessagesPageName, ui.Centered(textView, 80, 20), true).
+		ShowPage(flexPageName)
+}
+
+func (cv *chatView) unpinMessageByID(channelID discord.ChannelID, messageID discord.MessageID) {
+	slog.Info("unpinning message", "channel_id", channelID, "message_id", messageID)
+
+	if err := discordState.UnpinMessage(channelID, messageID, ""); err != nil {
+		slog.Error("failed to unpin message", "channel_id", channelID, "message_id", messageID, "err", err)
+		return
+	}
+
+	slog.Info("successfully unpinned message", "message_id", messageID)
 }
 
 func (cv *chatView) closeCurrentDM() {
@@ -369,4 +568,58 @@ func (cv *chatView) toggleMuteCurrentChannel() {
 	} else {
 		slog.Debug("toggleMuteCurrentChannel: selected node is not a guild or channel")
 	}
+}
+
+func (cv *chatView) leaveCurrentGuild() {
+	// Get the currently selected node from the guilds tree
+	node := cv.guildsTree.GetCurrentNode()
+	if node == nil {
+		slog.Debug("leaveCurrentGuild: no node selected")
+		return
+	}
+
+	ref := node.GetReference()
+
+	// Check if it's a guild
+	guildID, ok := ref.(discord.GuildID)
+	if !ok || !guildID.IsValid() {
+		slog.Debug("leaveCurrentGuild: selected node is not a guild")
+		return
+	}
+
+	// Get guild name for confirmation
+	guild, err := discordState.Cabinet.Guild(guildID)
+	if err != nil {
+		slog.Error("failed to get guild", "guild_id", guildID, "err", err)
+		return
+	}
+
+	// Show confirmation modal
+	cv.showConfirmModal(
+		fmt.Sprintf("Are you sure you want to leave '%s'?", guild.Name),
+		[]string{"Yes", "No"},
+		func(label string) {
+			if label == "Yes" {
+				go cv.leaveGuild(guildID, node)
+			}
+		},
+	)
+}
+
+func (cv *chatView) leaveGuild(guildID discord.GuildID, node *tview.TreeNode) {
+	slog.Info("leaving guild", "guild_id", guildID)
+
+	err := discordState.LeaveGuild(guildID)
+	if err != nil {
+		slog.Error("failed to leave guild", "err", err, "guild_id", guildID)
+		return
+	}
+
+	slog.Info("successfully left guild", "guild_id", guildID)
+
+	// Remove the guild from the tree on UI thread
+	cv.app.QueueUpdateDraw(func() {
+		root := cv.guildsTree.GetRoot()
+		root.RemoveChild(node)
+	})
 }

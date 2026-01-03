@@ -441,6 +441,9 @@ func (gt *guildsTree) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case gt.cfg.Keys.GuildsTree.CloseDM:
 		gt.closeDM()
 		return nil
+	case gt.cfg.Keys.GuildsTree.LeaveGuild:
+		app.chatView.leaveCurrentGuild()
+		return nil
 	}
 
 	// Check for 'm' key to mute/unmute

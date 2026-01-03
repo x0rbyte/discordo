@@ -61,6 +61,10 @@ show_friends_list = "Ctrl+F"
 close_current_dm = "Ctrl+X"
 # Toggle mute for the currently selected server or channel
 toggle_mute = "Ctrl+S"
+# Join a server using an invite code
+join_server = "Ctrl+J"
+# Show pinned messages in the current channel
+show_pinned_messages = "Ctrl+P"
 quit = "Ctrl+C"
 # Log out and remove the authentication token from keyring.
 # Requires re-login upon restart.
@@ -79,6 +83,8 @@ collapse_parent_node = "Rune[-]"
 move_to_parent_node = "Rune[p]"
 # Close/remove a DM channel from the tree (press on a DM channel)
 close_dm = "Rune[x]"
+# Leave the currently selected guild/server
+leave_guild = "Rune[X]"
 
 # Only while focusing on sent messages
 [keys.messages_list]
@@ -101,6 +107,10 @@ delete_confirm = "Rune[d]"
 open = "Rune[o]"
 # Add a reaction to the selected message.
 add_reaction = "Rune[a]"
+# Pin the selected message.
+pin_message = "Rune[P]"
+# Unpin the selected message.
+unpin_message = "Rune[U]"
 # Yank (copy) the selected message's content/url/id.
 yank_content = "Rune[y]"
 yank_url = "Rune[u]"
