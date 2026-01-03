@@ -5,7 +5,7 @@ auto_focus = true
 # Whether to enable mouse or not.
 mouse = true
 # The program to open when the `keys.message_input.editor` keymap is pressed. Set the value to `"default"` to use `$EDITOR`.
-editor = "default"
+editor = "nano"
 
 # "default" (unknown), "online", "dnd", "idle", "invisible", "offline"
 status = "default"

@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/ayn2op/discordo/internal/config"
 	"github.com/diamondburned/ningen/v3/discordmd"
 	"github.com/yuin/goldmark/ast"
@@ -71,20 +74,150 @@ func (r *Renderer) renderFencedCodeBlock(w io.Writer, node *ast.FencedCodeBlock,
 	io.WriteString(w, "\n")
 
 	if entering {
-		// language
+		// Get language name
+		var langName string
 		if l := node.Language(source); l != nil {
-			io.WriteString(w, "|=> ")
-			w.Write(l)
-			io.WriteString(w, "\n")
+			langName = string(l)
 		}
 
-		// body
+		// Top border
+		io.WriteString(w, "[::d]╭─")
+		if langName != "" {
+			io.WriteString(w, "[ [::b]")
+			io.WriteString(w, langName)
+			io.WriteString(w, "[::B] ][::D]")
+		} else {
+			io.WriteString(w, "──")
+		}
+		io.WriteString(w, "──────[::D]\n")
+
+		// Get all code content
 		lines := node.Lines()
+		var codeContent strings.Builder
 		for i := range lines.Len() {
 			line := lines.At(i)
-			io.WriteString(w, "| ")
-			w.Write(line.Value(source))
+			codeContent.Write(line.Value(source))
 		}
+
+		// Try to get lexer for the language
+		lexer := lexers.Get(langName)
+		if lexer == nil {
+			lexer = lexers.Fallback
+		}
+		lexer = chroma.Coalesce(lexer)
+
+		// Get a terminal-friendly style
+		style := styles.Get("monokai")
+		if style == nil {
+			style = styles.Fallback
+		}
+
+		// Tokenize the code
+		iterator, err := lexer.Tokenise(nil, codeContent.String())
+		if err != nil {
+			// Fallback: just print without highlighting
+			r.renderCodeWithoutHighlight(w, codeContent.String())
+			return
+		}
+
+		// Render highlighted code
+		r.renderHighlightedCode(w, iterator, style)
+
+		// Bottom border
+		io.WriteString(w, "[::d]╰")
+		io.WriteString(w, strings.Repeat("─", 40))
+		io.WriteString(w, "[::D]\n")
+	}
+}
+
+func (r *Renderer) renderCodeWithoutHighlight(w io.Writer, code string) {
+	lines := strings.Split(code, "\n")
+	for _, line := range lines {
+		io.WriteString(w, "[::d]│[::D] ")
+		io.WriteString(w, line)
+		if line != "" {
+			io.WriteString(w, "\n")
+		}
+	}
+}
+
+func (r *Renderer) renderHighlightedCode(w io.Writer, iterator chroma.Iterator, style *chroma.Style) {
+	currentLine := strings.Builder{}
+
+	for token := iterator(); token != chroma.EOF; token = iterator() {
+		color := r.tokenTypeToColor(token.Type, style)
+		value := token.Value
+
+		// Split by newlines to handle multi-line tokens
+		lines := strings.Split(value, "\n")
+		for i, line := range lines {
+			if i > 0 {
+				// End current line and start new one
+				io.WriteString(w, "[::d]│[::D] ")
+				io.WriteString(w, currentLine.String())
+				io.WriteString(w, "[-]\n")
+				currentLine.Reset()
+			}
+
+			if line != "" {
+				if color != "" {
+					currentLine.WriteString("[" + color + "]")
+					currentLine.WriteString(line)
+					currentLine.WriteString("[-]")
+				} else {
+					currentLine.WriteString(line)
+				}
+			}
+		}
+	}
+
+	// Write final line if not empty
+	if currentLine.Len() > 0 {
+		io.WriteString(w, "[::d]│[::D] ")
+		io.WriteString(w, currentLine.String())
+		io.WriteString(w, "[-]\n")
+	}
+}
+
+func (r *Renderer) tokenTypeToColor(tokenType chroma.TokenType, style *chroma.Style) string {
+	// Map chroma token types to terminal colors
+	switch tokenType {
+	case chroma.Keyword, chroma.KeywordConstant, chroma.KeywordDeclaration,
+		 chroma.KeywordNamespace, chroma.KeywordPseudo, chroma.KeywordReserved,
+		 chroma.KeywordType:
+		return "lightblue"
+	case chroma.Name, chroma.NameAttribute, chroma.NameBuiltin,
+		 chroma.NameBuiltinPseudo, chroma.NameClass, chroma.NameConstant,
+		 chroma.NameDecorator, chroma.NameEntity, chroma.NameException,
+		 chroma.NameFunction, chroma.NameFunctionMagic, chroma.NameLabel,
+		 chroma.NameNamespace, chroma.NameOther, chroma.NameProperty,
+		 chroma.NameTag, chroma.NameVariable, chroma.NameVariableClass,
+		 chroma.NameVariableGlobal, chroma.NameVariableInstance, chroma.NameVariableMagic:
+		return "white"
+	case chroma.LiteralString, chroma.LiteralStringAffix, chroma.LiteralStringAtom,
+		 chroma.LiteralStringBacktick, chroma.LiteralStringBoolean, chroma.LiteralStringChar,
+		 chroma.LiteralStringDelimiter, chroma.LiteralStringDoc, chroma.LiteralStringDouble,
+		 chroma.LiteralStringEscape, chroma.LiteralStringHeredoc, chroma.LiteralStringInterpol,
+		 chroma.LiteralStringName, chroma.LiteralStringOther, chroma.LiteralStringRegex,
+		 chroma.LiteralStringSingle, chroma.LiteralStringSymbol:
+		return "yellow"
+	case chroma.LiteralNumber, chroma.LiteralNumberBin, chroma.LiteralNumberFloat,
+		 chroma.LiteralNumberHex, chroma.LiteralNumberInteger, chroma.LiteralNumberIntegerLong,
+		 chroma.LiteralNumberOct:
+		return "lightmagenta"
+	case chroma.Operator, chroma.OperatorWord:
+		return "lightcyan"
+	case chroma.Comment, chroma.CommentHashbang, chroma.CommentMultiline,
+		 chroma.CommentSingle, chroma.CommentSpecial, chroma.CommentPreproc,
+		 chroma.CommentPreprocFile:
+		return "green::d"
+	case chroma.Generic, chroma.GenericDeleted, chroma.GenericEmph, chroma.GenericError,
+		 chroma.GenericHeading, chroma.GenericInserted, chroma.GenericOutput,
+		 chroma.GenericPrompt, chroma.GenericStrong, chroma.GenericSubheading,
+		 chroma.GenericTraceback, chroma.GenericUnderline:
+		return "white"
+	default:
+		return ""
 	}
 }
 

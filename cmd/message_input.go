@@ -87,6 +87,13 @@ func (mi *messageInput) reset() {
 }
 
 func (mi *messageInput) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
+	// Handle Ctrl+J for inserting newlines (multiline input)
+	if event.Key() == tcell.KeyCtrlJ {
+		currentText := mi.GetText()
+		mi.SetText(currentText+"\n", true)
+		return nil
+	}
+
 	switch event.Name() {
 	case mi.cfg.Keys.MessageInput.Paste:
 		mi.paste()
