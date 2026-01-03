@@ -11,6 +11,7 @@ import (
 	"github.com/ayn2op/tview"
 	"github.com/diamondburned/arikawa/v3/api"
 	"github.com/diamondburned/arikawa/v3/discord"
+	"github.com/diamondburned/arikawa/v3/utils/httputil"
 	"github.com/gdamore/tcell/v3"
 )
 
@@ -107,7 +108,7 @@ func (fl *friendsList) rebuildList() {
 	if fl.searchQuery != "" {
 		fl.SetTitle(fmt.Sprintf("Friends (search: %s)", fl.searchQuery))
 	} else {
-		fl.SetTitle("Friends")
+		fl.SetTitle("Friends (Press 'a' to add)")
 	}
 
 	if len(fl.relationships) == 0 {
@@ -216,22 +217,22 @@ func (fl *friendsList) rebuildList() {
 		}
 
 		if len(pendingIncoming) > 0 {
-			fl.AddItem("─ Pending Incoming ─", "", 0, nil)
+			fl.AddItem("─ Pending Incoming (Enter=Accept, d=Deny) ─", "", 0, nil)
 			itemIndex++
 
 			for _, rel := range pendingIncoming {
-				fl.AddItem("[yellow]"+rel.User.DisplayOrUsername()+"[-]", "", 0, nil)
+				fl.AddItem("[yellow]<- "+rel.User.DisplayOrUsername()+" (incoming)[-]", "", 0, nil)
 				fl.friendItems[itemIndex] = rel.User.ID
 				itemIndex++
 			}
 		}
 
 		if len(pendingOutgoing) > 0 {
-			fl.AddItem("─ Pending Outgoing ─", "", 0, nil)
+			fl.AddItem("─ Pending Outgoing (x=Cancel) ─", "", 0, nil)
 			itemIndex++
 
 			for _, rel := range pendingOutgoing {
-				fl.AddItem("[::d]"+rel.User.DisplayOrUsername()+"[::D]", "", 0, nil)
+				fl.AddItem("[::d]-> "+rel.User.DisplayOrUsername()+" (outgoing)[::D]", "", 0, nil)
 				fl.friendItems[itemIndex] = rel.User.ID
 				itemIndex++
 			}
@@ -327,6 +328,140 @@ func (fl *friendsList) formatFriendText(rel discord.Relationship, presence *disc
 	return text.String()
 }
 
+func (fl *friendsList) getRelationshipType(userID discord.UserID) discord.RelationshipType {
+	for _, rel := range fl.relationships {
+		if rel.User.ID == userID {
+			return rel.Type
+		}
+	}
+	return 0
+}
+
+func (fl *friendsList) acceptFriendRequest(userID discord.UserID) {
+	err := discordState.RequestJSON(
+		nil,
+		"PUT",
+		api.EndpointMe+"/relationships/"+userID.String(),
+	)
+	if err != nil {
+		slog.Error("failed to accept friend request", "user_id", userID, "err", err)
+		return
+	}
+
+	slog.Info("accepted friend request", "user_id", userID)
+	// Refresh the list
+	go fl.show()
+}
+
+func (fl *friendsList) denyFriendRequest(userID discord.UserID) {
+	err := discordState.RequestJSON(
+		nil,
+		"DELETE",
+		api.EndpointMe+"/relationships/"+userID.String(),
+	)
+	if err != nil {
+		slog.Error("failed to deny friend request", "user_id", userID, "err", err)
+		return
+	}
+
+	slog.Info("denied friend request", "user_id", userID)
+	// Refresh the list
+	go fl.show()
+}
+
+func (fl *friendsList) cancelFriendRequest(userID discord.UserID) {
+	err := discordState.RequestJSON(
+		nil,
+		"DELETE",
+		api.EndpointMe+"/relationships/"+userID.String(),
+	)
+	if err != nil {
+		slog.Error("failed to cancel friend request", "user_id", userID, "err", err)
+		return
+	}
+
+	slog.Info("cancelled friend request", "user_id", userID)
+	// Refresh the list
+	go fl.show()
+}
+
+func (fl *friendsList) sendFriendRequest(username string) {
+	// Parse username - Discord uses username or username#discriminator format
+	var user, discriminator string
+	parts := strings.Split(username, "#")
+	if len(parts) == 2 {
+		user = parts[0]
+		discriminator = parts[1]
+	} else {
+		user = username
+		discriminator = "0" // New username system doesn't use discriminators
+	}
+
+	type friendRequestPayload struct {
+		Username      string `json:"username"`
+		Discriminator string `json:"discriminator"`
+	}
+
+	payload := friendRequestPayload{
+		Username:      user,
+		Discriminator: discriminator,
+	}
+
+	err := discordState.RequestJSON(
+		nil,
+		"POST",
+		api.EndpointMe+"/relationships",
+		httputil.WithJSONBody(payload),
+	)
+	if err != nil {
+		slog.Error("failed to send friend request", "username", username, "err", err)
+		return
+	}
+
+	slog.Info("sent friend request", "username", username)
+	// Refresh the list
+	go fl.show()
+}
+
+func (fl *friendsList) showAddFriendDialog() {
+	inputField := tview.NewInputField().
+		SetLabel("Add Friend (username): ").
+		SetFieldWidth(0)
+
+	inputField.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			username := inputField.GetText()
+			if username != "" {
+				fl.sendFriendRequest(username)
+			}
+		}
+		// Close dialog
+		app.chatView.RemovePage("addFriendDialog").SwitchToPage(friendsListPageName)
+		app.SetFocus(fl)
+	})
+
+	inputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			app.chatView.RemovePage("addFriendDialog").SwitchToPage(friendsListPageName)
+			app.SetFocus(fl)
+			return nil
+		}
+		return event
+	})
+
+	grid := tview.NewGrid().
+		SetRows(0, 3, 0).
+		SetColumns(0, 50, 0).
+		AddItem(inputField, 1, 1, 1, 1, 0, 0, true)
+
+	modal := tview.NewFrame(grid).
+		SetBorders(1, 1, 1, 1, 1, 1).
+		AddText("Add Friend", true, tview.AlignmentCenter, tcell.ColorDefault)
+
+	app.chatView.AddPage("addFriendDialog", modal, true, true)
+	app.SetFocus(inputField)
+}
+
 func (fl *friendsList) onSelected(index int) {
 	if index < 0 || index >= fl.GetItemCount() {
 		return
@@ -346,6 +481,16 @@ func (fl *friendsList) onSelected(index int) {
 		return
 	}
 
+	// Check relationship type
+	relType := fl.getRelationshipType(userID)
+
+	// If it's a pending incoming request, accept it
+	if relType == 3 { // Pending incoming
+		fl.acceptFriendRequest(userID)
+		return
+	}
+
+	// For friends or other types, initiate DM
 	// Hide the modal
 	fl.hide()
 
@@ -363,7 +508,7 @@ func (fl *friendsList) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		// Allow arrow keys and navigation keys through
 		return event
 	case tcell.KeyEnter:
-		// Enter initiates DM
+		// Enter accepts incoming requests or initiates DM
 		fl.onSelected(fl.GetCurrentItem())
 		return nil
 	case tcell.KeyEscape:
@@ -371,10 +516,44 @@ func (fl *friendsList) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		fl.clearSearch()
 		return nil
 	case tcell.KeyRune:
-		// Add character to search
 		str := event.Str()
 		if len(str) > 0 {
-			fl.updateSearch(rune(str[0]))
+			char := rune(str[0])
+
+			// Handle special action keys if not searching
+			if fl.searchQuery == "" {
+				index := fl.GetCurrentItem()
+				userID, ok := fl.friendItems[index]
+				if ok && userID.IsValid() {
+					relType := fl.getRelationshipType(userID)
+
+					switch char {
+					case 'd', 'D':
+						// Deny pending incoming friend request
+						if relType == 3 { // Pending incoming
+							fl.denyFriendRequest(userID)
+							return nil
+						}
+					case 'x', 'X':
+						// Cancel pending outgoing friend request
+						if relType == 4 { // Pending outgoing
+							fl.cancelFriendRequest(userID)
+							return nil
+						}
+					case 'a', 'A':
+						// Add friend request (show input dialog)
+						fl.showAddFriendDialog()
+						return nil
+					}
+				} else if char == 'a' || char == 'A' {
+					// Allow 'a' to work even when not on a user
+					fl.showAddFriendDialog()
+					return nil
+				}
+			}
+
+			// Add character to search
+			fl.updateSearch(char)
 		}
 		return nil
 	case tcell.KeyBackspace, tcell.KeyBackspace2:

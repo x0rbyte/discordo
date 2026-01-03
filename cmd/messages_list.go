@@ -196,6 +196,11 @@ func (ml *messagesList) drawDefaultMessage(w io.Writer, message discord.Message)
 		io.WriteString(w, " [::d](edited)[::D]")
 	}
 
+	// Render reactions
+	if len(message.Reactions) > 0 {
+		ml.drawReactions(w, message.Reactions)
+	}
+
 	for _, a := range message.Attachments {
 		fmt.Fprintln(w)
 
@@ -212,6 +217,38 @@ func (ml *messagesList) drawDefaultMessage(w io.Writer, message discord.Message)
 	for _, embed := range message.Embeds {
 		ml.drawEmbed(w, embed)
 	}
+}
+
+func (ml *messagesList) drawReactions(w io.Writer, reactions []discord.Reaction) {
+	if len(reactions) == 0 {
+		return
+	}
+
+	fmt.Fprintln(w) // New line before reactions
+
+	// Get style
+	fg := ml.cfg.Theme.MessagesList.ReactionStyle.GetForeground()
+	bg := ml.cfg.Theme.MessagesList.ReactionStyle.GetBackground()
+
+	// Build reaction string
+	var parts []string
+	for _, r := range reactions {
+		var emoji string
+		if r.Emoji.IsUnicode() {
+			emoji = r.Emoji.Name
+		} else {
+			emoji = ":" + r.Emoji.Name + ":"
+		}
+
+		part := fmt.Sprintf("%s %d", emoji, r.Count)
+		if r.Me {
+			part += " (you)"
+		}
+		parts = append(parts, part)
+	}
+
+	reactionStr := strings.Join(parts, " | ")
+	fmt.Fprintf(w, "[%s:%s]%s[-:-]", fg, bg, reactionStr)
 }
 
 func (ml *messagesList) drawEmbed(w io.Writer, embed discord.Embed) {
@@ -344,6 +381,8 @@ func (ml *messagesList) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		ml.yankURL()
 	case ml.cfg.Keys.MessagesList.Open:
 		ml.open()
+	case ml.cfg.Keys.MessagesList.AddReaction:
+		ml.showReactionPicker()
 	case ml.cfg.Keys.MessagesList.Reply:
 		ml.reply(false)
 	case ml.cfg.Keys.MessagesList.ReplyMention:
@@ -592,6 +631,117 @@ func (ml *messagesList) showAttachmentsList(urls []string, attachments []discord
 	app.chatView.
 		AddAndSwitchToPage(attachmentsListPageName, ui.Centered(list, 0, 0), true).
 		ShowPage(flexPageName)
+}
+
+func (ml *messagesList) showReactionPicker() {
+	msg, err := ml.selectedMessage()
+	if err != nil {
+		slog.Error("failed to get selected message for reaction", "err", err)
+		return
+	}
+
+	emojis := []struct {
+		emoji string
+		name  string
+	}{
+		{"👍", "thumbs up"},
+		{"👎", "thumbs down"},
+		{"❤️", "heart"},
+		{"😂", "laughing"},
+		{"😮", "surprised"},
+		{"😢", "sad"},
+		{"😡", "angry"},
+		{"🎉", "party"},
+		{"🔥", "fire"},
+		{"✅", "check mark"},
+		{"❌", "cross mark"},
+		{"🤔", "thinking"},
+		{"👀", "eyes"},
+		{"💯", "hundred"},
+		{"😊", "smiling"},
+		{"🙏", "pray"},
+		{"💀", "skull"},
+		{"⭐", "star"},
+		{"💔", "broken heart"},
+		{"🤣", "rofl"},
+	}
+
+	closeModal := func() {
+		app.chatView.RemovePage(reactionPickerPageName).SwitchToPage(flexPageName)
+		app.SetFocus(ml)
+	}
+
+	list := tview.NewList().
+		SetWrapAround(true).
+		SetHighlightFullLine(true).
+		ShowSecondaryText(false).
+		SetDoneFunc(closeModal)
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Name() {
+		case ml.cfg.Keys.MessagesList.SelectPrevious:
+			return tcell.NewEventKey(tcell.KeyUp, "", tcell.ModNone)
+		case ml.cfg.Keys.MessagesList.SelectNext:
+			return tcell.NewEventKey(tcell.KeyDown, "", tcell.ModNone)
+		case ml.cfg.Keys.MessagesList.SelectFirst:
+			return tcell.NewEventKey(tcell.KeyHome, "", tcell.ModNone)
+		case ml.cfg.Keys.MessagesList.SelectLast:
+			return tcell.NewEventKey(tcell.KeyEnd, "", tcell.ModNone)
+		case "Esc", ml.cfg.Keys.MessagesList.Cancel:
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	list.Box = ui.ConfigureBox(list.Box, &ml.cfg.Theme)
+	list.SetTitle("Add Reaction")
+
+	for i, e := range emojis {
+		emoji := e.emoji
+		itemText := fmt.Sprintf("%s  %s", emoji, e.name)
+
+		// Only assign number shortcuts for first 9 items
+		var shortcut rune
+		if i < 9 {
+			shortcut = rune('1' + i)
+		}
+
+		list.AddItem(itemText, "", shortcut, func() {
+			closeModal()
+			go ml.toggleReaction(msg, emoji)
+		})
+	}
+
+	app.chatView.
+		AddAndSwitchToPage(reactionPickerPageName, ui.Centered(list, 35, 24), true).
+		ShowPage(flexPageName)
+}
+
+func (ml *messagesList) toggleReaction(msg *discord.Message, emoji string) {
+	apiEmoji := discord.APIEmoji(emoji)
+
+	// Check if already reacted
+	alreadyReacted := false
+	for _, r := range msg.Reactions {
+		if r.Emoji.Name == emoji && r.Me {
+			alreadyReacted = true
+			break
+		}
+	}
+
+	var err error
+	if alreadyReacted {
+		err = discordState.Unreact(msg.ChannelID, msg.ID, apiEmoji)
+		if err != nil {
+			slog.Error("failed to remove reaction", "err", err, "emoji", emoji)
+		}
+	} else {
+		err = discordState.React(msg.ChannelID, msg.ID, apiEmoji)
+		if err != nil {
+			slog.Error("failed to add reaction", "err", err, "emoji", emoji)
+		}
+	}
 }
 
 func (ml *messagesList) openAttachment(attachment discord.Attachment) {

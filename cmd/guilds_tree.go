@@ -3,16 +3,22 @@ package cmd
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/ayn2op/discordo/internal/clipboard"
 	"github.com/ayn2op/discordo/internal/config"
+	"github.com/ayn2op/discordo/internal/consts"
 	"github.com/ayn2op/discordo/internal/ui"
 	"github.com/ayn2op/tview"
+	"github.com/diamondburned/arikawa/v3/api"
 	"github.com/diamondburned/arikawa/v3/discord"
 	"github.com/diamondburned/arikawa/v3/gateway"
+	"github.com/diamondburned/arikawa/v3/utils/httputil"
 	"github.com/diamondburned/ningen/v3"
 	"github.com/gdamore/tcell/v3"
 )
@@ -20,13 +26,26 @@ import (
 type guildsTree struct {
 	*tview.TreeView
 	cfg *config.Config
+
+	// Cache for mute settings
+	mutedGuilds   map[discord.GuildID]bool
+	mutedChannels map[discord.ChannelID]bool
+	cachePath     string // Path to persist mute cache
 }
 
 func newGuildsTree(cfg *config.Config) *guildsTree {
+	cachePath := filepath.Join(consts.CacheDir(), "mute_cache.json")
+
 	gt := &guildsTree{
-		TreeView: tview.NewTreeView(),
-		cfg:      cfg,
+		TreeView:      tview.NewTreeView(),
+		mutedGuilds:   make(map[discord.GuildID]bool),
+		mutedChannels: make(map[discord.ChannelID]bool),
+		cachePath:     cachePath,
+		cfg:           cfg,
 	}
+
+	// Load mute cache from disk
+	gt.loadMuteCache()
 
 	gt.Box = ui.ConfigureBox(gt.Box, &cfg.Theme)
 	gt.
@@ -77,17 +96,36 @@ func (gt *guildsTree) unreadStyle(indication ningen.UnreadIndication) tcell.Styl
 }
 
 func (gt *guildsTree) getGuildNodeStyle(guildID discord.GuildID) tcell.Style {
+	// If guild is muted, always return dim style regardless of unread status
+	if gt.isGuildMuted(guildID) {
+		var style tcell.Style
+		return style.Dim(true)
+	}
+
 	indication := discordState.GuildIsUnread(guildID, ningen.GuildUnreadOpts{UnreadOpts: ningen.UnreadOpts{IncludeMutedCategories: true}})
 	return gt.unreadStyle(indication)
 }
 
 func (gt *guildsTree) getChannelNodeStyle(channelID discord.ChannelID) tcell.Style {
+	// If channel is muted, always return dim style regardless of unread status
+	if gt.isChannelMuted(channelID) {
+		var style tcell.Style
+		return style.Dim(true)
+	}
+
 	indication := discordState.ChannelIsUnread(channelID, ningen.UnreadOpts{IncludeMutedCategories: true})
 	return gt.unreadStyle(indication)
 }
 
 func (gt *guildsTree) createGuildNode(n *tview.TreeNode, guild discord.Guild) {
-	guildNode := tview.NewTreeNode(guild.Name).
+	guildText := guild.Name
+
+	// Add mute indicator if guild is in cache as muted
+	if gt.isGuildMuted(guild.ID) {
+		guildText = "[::d](muted)[::D] " + guildText
+	}
+
+	guildNode := tview.NewTreeNode(guildText).
 		SetReference(guild.ID).
 		SetTextStyle(gt.getGuildNodeStyle(guild.ID))
 	n.AddChild(guildNode)
@@ -98,7 +136,14 @@ func (gt *guildsTree) createChannelNode(node *tview.TreeNode, channel discord.Ch
 		return
 	}
 
-	channelNode := tview.NewTreeNode(ui.ChannelToString(channel)).
+	channelText := ui.ChannelToString(channel)
+
+	// Add mute indicator if channel is muted
+	if gt.isChannelMuted(channel.ID) {
+		channelText = "[::d](muted)[::D] " + channelText
+	}
+
+	channelNode := tview.NewTreeNode(channelText).
 		SetReference(channel.ID).
 		SetTextStyle(gt.getChannelNodeStyle(channel.ID))
 	node.AddChild(channelNode)
@@ -398,6 +443,15 @@ func (gt *guildsTree) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	// Check for 'm' key to mute/unmute
+	if event.Key() == tcell.KeyRune {
+		str := event.Str()
+		if len(str) > 0 && (str[0] == 'm' || str[0] == 'M') {
+			gt.toggleMute()
+			return nil
+		}
+	}
+
 	return nil
 }
 
@@ -479,6 +533,253 @@ func (gt *guildsTree) yankID() {
 	if id, ok := node.GetReference().(fmt.Stringer); ok {
 		go clipboard.Write(clipboard.FmtText, []byte(id.String()))
 	}
+}
+
+func (gt *guildsTree) toggleMute() {
+	node := gt.GetCurrentNode()
+	if node == nil {
+		return
+	}
+
+	ref := node.GetReference()
+
+	// Check if it's a guild or a channel
+	if guildID, ok := ref.(discord.GuildID); ok && guildID.IsValid() {
+		gt.toggleGuildMute(guildID)
+	} else if channelID, ok := ref.(discord.ChannelID); ok && channelID.IsValid() {
+		gt.toggleChannelMute(channelID)
+	}
+}
+
+func (gt *guildsTree) toggleGuildMute(guildID discord.GuildID) {
+	// Determine new mute state from cache (toggle)
+	currentMuted := gt.isGuildMuted(guildID)
+	newMuted := !currentMuted
+
+	// Update guild settings
+	type updatePayload struct {
+		Muted bool `json:"muted"`
+	}
+
+	payload := updatePayload{
+		Muted: newMuted,
+	}
+
+	err := discordState.RequestJSON(
+		nil,
+		"PATCH",
+		api.EndpointMe+"/guilds/"+guildID.String()+"/settings",
+		httputil.WithJSONBody(payload),
+	)
+
+	if err != nil {
+		slog.Error("failed to toggle guild mute", "guild_id", guildID, "err", err)
+		return
+	}
+
+	muteStatus := "unmuted"
+	if newMuted {
+		muteStatus = "muted"
+	}
+	slog.Info("toggled guild mute", "guild_id", guildID, "status", muteStatus)
+
+	// Update the cache
+	gt.mutedGuilds[guildID] = newMuted
+
+	// Save cache to disk
+	go gt.saveMuteCache()
+
+	// Update the UI - refresh the guild node to show mute indicator
+	app.QueueUpdateDraw(func() {
+		gt.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+			if ref, ok := node.GetReference().(discord.GuildID); ok && ref == guildID {
+				guild, err := discordState.Cabinet.Guild(guildID)
+				if err == nil {
+					guildText := guild.Name
+					if newMuted {
+						guildText = "[::d](muted)[::D] " + guildText
+					}
+					node.SetText(guildText)
+					// Update the style to reflect mute status (dim when muted)
+					node.SetTextStyle(gt.getGuildNodeStyle(guildID))
+					slog.Info("updated guild node text", "guild_id", guildID, "text", guildText)
+				}
+				return false
+			}
+			return true
+		})
+	})
+}
+
+func (gt *guildsTree) toggleChannelMute(channelID discord.ChannelID) {
+	channel, err := discordState.Cabinet.Channel(channelID)
+	if err != nil {
+		slog.Error("failed to get channel", "channel_id", channelID, "err", err)
+		return
+	}
+
+	// Determine new mute state from cache (toggle)
+	currentMuted := gt.isChannelMuted(channelID)
+	newMuted := !currentMuted
+
+	// Create channel override
+	type channelOverridePayload struct {
+		Muted                 bool `json:"muted"`
+		MessageNotifications  int  `json:"message_notifications"`
+		SuppressEveryone      bool `json:"suppress_everyone"`
+		SuppressRoles         bool `json:"suppress_roles"`
+		MuteScheduledEvents   bool `json:"mute_scheduled_events"`
+		Flags                 int  `json:"flags"`
+	}
+
+	type updatePayload struct {
+		ChannelOverrides map[string]channelOverridePayload `json:"channel_overrides"`
+	}
+
+	payload := updatePayload{
+		ChannelOverrides: map[string]channelOverridePayload{
+			channelID.String(): {
+				Muted:                newMuted,
+				MessageNotifications: 0,
+				SuppressEveryone:     false,
+				SuppressRoles:        false,
+				MuteScheduledEvents:  false,
+				Flags:                0,
+			},
+		},
+	}
+
+	err = discordState.RequestJSON(
+		nil,
+		"PATCH",
+		api.EndpointMe+"/guilds/"+channel.GuildID.String()+"/settings",
+		httputil.WithJSONBody(payload),
+	)
+
+	if err != nil {
+		slog.Error("failed to toggle channel mute", "channel_id", channelID, "err", err)
+		return
+	}
+
+	muteStatus := "unmuted"
+	if newMuted {
+		muteStatus = "muted"
+	}
+	slog.Info("toggled channel mute", "channel_id", channelID, "status", muteStatus)
+
+	// Update the cache
+	gt.mutedChannels[channelID] = newMuted
+
+	// Save cache to disk
+	go gt.saveMuteCache()
+
+	// Update the UI - refresh the entire guild to update channel text
+	app.QueueUpdateDraw(func() {
+		// Find the guild node and refresh its children
+		gt.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+			if ref, ok := node.GetReference().(discord.GuildID); ok && ref == channel.GuildID {
+				// Clear existing channel nodes
+				node.ClearChildren()
+
+				// Recreate channel nodes with updated mute status
+				channels, err := discordState.Cabinet.Channels(channel.GuildID)
+				if err == nil {
+					gt.createChannelNodes(node, channels)
+					slog.Info("refreshed channel nodes for guild", "guild_id", channel.GuildID)
+				}
+				return false
+			}
+			return true
+		})
+	})
+}
+
+func (gt *guildsTree) isGuildMuted(guildID discord.GuildID) bool {
+	// Check cache
+	muted, exists := gt.mutedGuilds[guildID]
+	return exists && muted
+}
+
+func (gt *guildsTree) isChannelMuted(channelID discord.ChannelID) bool {
+	// Check cache
+	muted, exists := gt.mutedChannels[channelID]
+	return exists && muted
+}
+
+func (gt *guildsTree) loadMuteCache() {
+	data, err := os.ReadFile(gt.cachePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn("failed to load mute cache", "err", err)
+		}
+		return
+	}
+
+	type cacheData struct {
+		MutedGuilds   map[string]bool `json:"muted_guilds"`
+		MutedChannels map[string]bool `json:"muted_channels"`
+	}
+
+	var cache cacheData
+	if err := json.Unmarshal(data, &cache); err != nil {
+		slog.Error("failed to parse mute cache", "err", err)
+		return
+	}
+
+	// Convert string IDs back to discord IDs
+	for guildIDStr, muted := range cache.MutedGuilds {
+		if id, err := discord.ParseSnowflake(guildIDStr); err == nil {
+			gt.mutedGuilds[discord.GuildID(id)] = muted
+		}
+	}
+
+	for channelIDStr, muted := range cache.MutedChannels {
+		if id, err := discord.ParseSnowflake(channelIDStr); err == nil {
+			gt.mutedChannels[discord.ChannelID(id)] = muted
+		}
+	}
+
+	slog.Info("loaded mute cache", "guilds", len(gt.mutedGuilds), "channels", len(gt.mutedChannels))
+}
+
+func (gt *guildsTree) saveMuteCache() {
+	type cacheData struct {
+		MutedGuilds   map[string]bool `json:"muted_guilds"`
+		MutedChannels map[string]bool `json:"muted_channels"`
+	}
+
+	cache := cacheData{
+		MutedGuilds:   make(map[string]bool),
+		MutedChannels: make(map[string]bool),
+	}
+
+	// Convert discord IDs to strings for JSON
+	for guildID, muted := range gt.mutedGuilds {
+		cache.MutedGuilds[guildID.String()] = muted
+	}
+
+	for channelID, muted := range gt.mutedChannels {
+		cache.MutedChannels[channelID.String()] = muted
+	}
+
+	data, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		slog.Error("failed to marshal mute cache", "err", err)
+		return
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(gt.cachePath), 0755); err != nil {
+		slog.Error("failed to create cache directory", "err", err)
+		return
+	}
+
+	if err := os.WriteFile(gt.cachePath, data, 0644); err != nil {
+		slog.Error("failed to save mute cache", "err", err)
+		return
+	}
+
+	slog.Debug("saved mute cache", "path", gt.cachePath)
 }
 
 func (gt *guildsTree) updateDMStyleAndMove(channelID discord.ChannelID, forceUnread bool) {

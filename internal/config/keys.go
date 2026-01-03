@@ -19,6 +19,7 @@ type (
 		ToggleMembersList string `toml:"toggle_members_list"`
 		ShowFriendsList   string `toml:"show_friends_list"`
 		CloseCurrentDM    string `toml:"close_current_dm"`
+		ToggleMute        string `toml:"toggle_mute"`
 
 		GuildsTree   GuildsTreeKeys   `toml:"guilds_tree"`
 		MessagesList MessagesListKeys `toml:"messages_list"`
@@ -52,6 +53,7 @@ type (
 		Delete        string `toml:"delete"`
 		DeleteConfirm string `toml:"delete_confirm"`
 		Open          string `toml:"open"`
+		AddReaction   string `toml:"add_reaction"`
 
 		YankContent string `toml:"yank_content"`
 		YankURL     string `toml:"yank_url"`

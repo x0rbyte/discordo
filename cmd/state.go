@@ -48,6 +48,9 @@ func openState(token string) error {
 	discordState.AddHandler(onGuildMemberUpdate)
 	discordState.AddHandler(onGuildMemberRemove)
 	discordState.AddHandler(onPresenceUpdate)
+	discordState.AddHandler(onMessageReactionAdd)
+	discordState.AddHandler(onMessageReactionRemove)
+	discordState.AddHandler(onMessageReactionRemoveAll)
 
 	discordState.AddHandler(func(event *gateway.GuildMembersChunkEvent) {
 		app.chatView.messagesList.setFetchingChunk(false, uint(len(event.Members)))
@@ -307,6 +310,57 @@ func onPresenceUpdate(event *gateway.PresenceUpdateEvent) {
 	if app.chatView.membersList.currentGuildID == event.GuildID && app.chatView.membersList.visible {
 		app.QueueUpdateDraw(func() {
 			app.chatView.membersList.updateMemberPresence(event.User.ID)
+		})
+	}
+}
+
+func onMessageReactionAdd(event *gateway.MessageReactionAddEvent) {
+	if app.chatView.selectedChannel != nil &&
+		app.chatView.selectedChannel.ID == event.ChannelID {
+
+		messages, err := discordState.Cabinet.Messages(event.ChannelID)
+		if err != nil {
+			slog.Error("failed to get messages after reaction add", "err", err)
+			return
+		}
+
+		app.QueueUpdateDraw(func() {
+			app.chatView.messagesList.reset()
+			app.chatView.messagesList.drawMessages(messages)
+		})
+	}
+}
+
+func onMessageReactionRemove(event *gateway.MessageReactionRemoveEvent) {
+	if app.chatView.selectedChannel != nil &&
+		app.chatView.selectedChannel.ID == event.ChannelID {
+
+		messages, err := discordState.Cabinet.Messages(event.ChannelID)
+		if err != nil {
+			slog.Error("failed to get messages after reaction remove", "err", err)
+			return
+		}
+
+		app.QueueUpdateDraw(func() {
+			app.chatView.messagesList.reset()
+			app.chatView.messagesList.drawMessages(messages)
+		})
+	}
+}
+
+func onMessageReactionRemoveAll(event *gateway.MessageReactionRemoveAllEvent) {
+	if app.chatView.selectedChannel != nil &&
+		app.chatView.selectedChannel.ID == event.ChannelID {
+
+		messages, err := discordState.Cabinet.Messages(event.ChannelID)
+		if err != nil {
+			slog.Error("failed to get messages after reactions cleared", "err", err)
+			return
+		}
+
+		app.QueueUpdateDraw(func() {
+			app.chatView.messagesList.reset()
+			app.chatView.messagesList.drawMessages(messages)
 		})
 	}
 }

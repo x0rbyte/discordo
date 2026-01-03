@@ -59,6 +59,8 @@ toggle_members_list = "Ctrl+U"
 show_friends_list = "Ctrl+F"
 # Close the currently open DM channel (removes from tree).
 close_current_dm = "Ctrl+X"
+# Toggle mute for the currently selected server or channel
+toggle_mute = "Ctrl+S"
 quit = "Ctrl+C"
 # Log out and remove the authentication token from keyring.
 # Requires re-login upon restart.
@@ -97,6 +99,8 @@ delete_confirm = "Rune[d]"
 # Open the selected message's attachments or hyperlinks in the message
 # using the default browser application.
 open = "Rune[o]"
+# Add a reaction to the selected message.
+add_reaction = "Rune[a]"
 # Yank (copy) the selected message's content/url/id.
 yank_content = "Rune[y]"
 yank_url = "Rune[u]"
@@ -167,6 +171,7 @@ mention_style = { foreground = "blue" }
 emoji_style = { foreground = "green" }
 url_style = { foreground = "blue" }
 attachment_style = { foreground = "yellow" }
+reaction_style = { foreground = "cyan" }
 
 [theme.mentions_list]
 # Note: width and height are capped to the avaliable space

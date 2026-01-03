@@ -36,6 +36,312 @@ const tmpFilePattern = consts.Name + "_*.md"
 
 var mentionRegex = regexp.MustCompile("@[a-zA-Z0-9._]+")
 
+// emojiShortcodes maps emoji shortcodes to their Unicode characters
+var emojiShortcodes = map[string]string{
+	// Smileys & Emotion
+	"smile":         "😊",
+	"smiley":        "😃",
+	"grin":          "😁",
+	"laughing":      "😆",
+	"sweat_smile":   "😅",
+	"rofl":          "🤣",
+	"joy":           "😂",
+	"slightly_smiling_face": "🙂",
+	"upside_down_face": "🙃",
+	"wink":          "😉",
+	"blush":         "😊",
+	"innocent":      "😇",
+	"smiling_face_with_3_hearts": "🥰",
+	"heart_eyes":    "😍",
+	"star_struck":   "🤩",
+	"kissing_heart": "😘",
+	"kissing":       "😗",
+	"relaxed":       "☺️",
+	"kissing_closed_eyes": "😚",
+	"kissing_smiling_eyes": "😙",
+	"yum":           "😋",
+	"stuck_out_tongue": "😛",
+	"stuck_out_tongue_winking_eye": "😜",
+	"zany_face":     "🤪",
+	"stuck_out_tongue_closed_eyes": "😝",
+	"money_mouth_face": "🤑",
+	"hugs":          "🤗",
+	"hand_over_mouth": "🤭",
+	"shushing_face": "🤫",
+	"thinking":      "🤔",
+	"zipper_mouth_face": "🤐",
+	"raised_eyebrow": "🤨",
+	"neutral_face":  "😐",
+	"expressionless": "😑",
+	"no_mouth":      "😶",
+	"smirk":         "😏",
+	"unamused":      "😒",
+	"roll_eyes":     "🙄",
+	"grimacing":     "😬",
+	"lying_face":    "🤥",
+	"relieved":      "😌",
+	"pensive":       "😔",
+	"sleepy":        "😪",
+	"drooling_face": "🤤",
+	"sleeping":      "😴",
+	"mask":          "😷",
+	"face_with_thermometer": "🤒",
+	"face_with_head_bandage": "🤕",
+	"nauseated_face": "🤢",
+	"vomiting_face": "🤮",
+	"sneezing_face": "🤧",
+	"hot_face":      "🥵",
+	"cold_face":     "🥶",
+	"woozy_face":    "🥴",
+	"dizzy_face":    "😵",
+	"exploding_head": "🤯",
+	"sunglasses":    "😎",
+	"nerd_face":     "🤓",
+	"monocle_face":  "🧐",
+	"confused":      "😕",
+	"worried":       "😟",
+	"slightly_frowning_face": "🙁",
+	"frowning_face": "☹️",
+	"open_mouth":    "😮",
+	"hushed":        "😯",
+	"astonished":    "😲",
+	"flushed":       "😳",
+	"pleading_face": "🥺",
+	"frowning":      "😦",
+	"anguished":     "😧",
+	"fearful":       "😨",
+	"cold_sweat":    "😰",
+	"disappointed_relieved": "😥",
+	"cry":           "😢",
+	"sob":           "😭",
+	"scream":        "😱",
+	"confounded":    "😖",
+	"persevere":     "😣",
+	"disappointed":  "😞",
+	"sweat":         "😓",
+	"weary":         "😩",
+	"tired_face":    "😫",
+	"yawning_face":  "🥱",
+	"triumph":       "😤",
+	"rage":          "😡",
+	"angry":         "😠",
+	"cursing_face":  "🤬",
+	"smiling_imp":   "😈",
+	"imp":           "👿",
+	"skull":         "💀",
+	"skull_and_crossbones": "☠️",
+
+	// Gestures & Body Parts
+	"wave":          "👋",
+	"raised_back_of_hand": "🤚",
+	"raised_hand_with_fingers_splayed": "🖐️",
+	"hand":          "✋",
+	"vulcan_salute": "🖖",
+	"ok_hand":       "👌",
+	"pinching_hand": "🤏",
+	"v":             "✌️",
+	"crossed_fingers": "🤞",
+	"love_you_gesture": "🤟",
+	"metal":         "🤘",
+	"call_me_hand":  "🤙",
+	"point_left":    "👈",
+	"point_right":   "👉",
+	"point_up_2":    "👆",
+	"point_down":    "👇",
+	"point_up":      "☝️",
+	"+1":            "👍",
+	"thumbsup":      "👍",
+	"-1":            "👎",
+	"thumbsdown":    "👎",
+	"fist":          "✊",
+	"facepunch":     "👊",
+	"left_facing_fist": "🤛",
+	"right_facing_fist": "🤜",
+	"clap":          "👏",
+	"raised_hands":  "🙌",
+	"open_hands":    "👐",
+	"palms_up_together": "🤲",
+	"handshake":     "🤝",
+	"pray":          "🙏",
+	"writing_hand":  "✍️",
+	"nail_care":     "💅",
+	"muscle":        "💪",
+	"eyes":          "👀",
+	"eye":           "👁️",
+	"ear":           "👂",
+	"nose":          "👃",
+	"brain":         "🧠",
+	"heart":         "❤️",
+	"blue_heart":    "💙",
+	"green_heart":   "💚",
+	"yellow_heart":  "💛",
+	"orange_heart":  "🧡",
+	"purple_heart":  "💜",
+	"black_heart":   "🖤",
+	"white_heart":   "🤍",
+	"brown_heart":   "🤎",
+	"broken_heart":  "💔",
+
+	// Nature & Animals
+	"dog":           "🐶",
+	"cat":           "🐱",
+	"mouse":         "🐭",
+	"hamster":       "🐹",
+	"rabbit":        "🐰",
+	"fox":           "🦊",
+	"bear":          "🐻",
+	"panda_face":    "🐼",
+	"koala":         "🐨",
+	"tiger":         "🐯",
+	"lion":          "🦁",
+	"cow":           "🐮",
+	"pig":           "🐷",
+	"frog":          "🐸",
+	"monkey":        "🐵",
+	"see_no_evil":   "🙈",
+	"hear_no_evil":  "🙉",
+	"speak_no_evil": "🙊",
+	"monkey_face":   "🐵",
+	"chicken":       "🐔",
+	"penguin":       "🐧",
+	"bird":          "🐦",
+	"hatching_chick": "🐣",
+	"baby_chick":    "🐤",
+	"wolf":          "🐺",
+	"boar":          "🐗",
+	"horse":         "🐴",
+	"unicorn":       "🦄",
+	"bee":           "🐝",
+	"bug":           "🐛",
+	"butterfly":     "🦋",
+	"snail":         "🐌",
+	"shell":         "🐚",
+	"beetle":        "🐞",
+	"ant":           "🐜",
+	"spider":        "🕷️",
+	"scorpion":      "🦂",
+	"turtle":        "🐢",
+	"snake":         "🐍",
+	"dragon":        "🐉",
+	"fire":          "🔥",
+	"star":          "⭐",
+	"sparkles":      "✨",
+	"zap":           "⚡",
+	"boom":          "💥",
+	"collision":     "💥",
+	"dizzy":         "💫",
+	"snowflake":     "❄️",
+	"cloud":         "☁️",
+	"sun":           "☀️",
+	"rainbow":       "🌈",
+
+	// Food & Drink
+	"coffee":        "☕",
+	"tea":           "🍵",
+	"beer":          "🍺",
+	"wine_glass":    "🍷",
+	"cocktail":      "🍸",
+	"pizza":         "🍕",
+	"hamburger":     "🍔",
+	"fries":         "🍟",
+	"poultry_leg":   "🍗",
+	"meat_on_bone":  "🍖",
+	"cake":          "🍰",
+	"birthday":      "🎂",
+	"cookie":        "🍪",
+	"chocolate_bar": "🍫",
+	"candy":         "🍬",
+	"lollipop":      "🍭",
+	"doughnut":      "🍩",
+	"ice_cream":     "🍨",
+	"shaved_ice":    "🍧",
+	"apple":         "🍎",
+	"green_apple":   "🍏",
+	"tangerine":     "🍊",
+	"lemon":         "🍋",
+	"cherries":      "🍒",
+	"grapes":        "🍇",
+	"watermelon":    "🍉",
+	"strawberry":    "🍓",
+	"peach":         "🍑",
+	"banana":        "🍌",
+	"pineapple":     "🍍",
+	"avocado":       "🥑",
+
+	// Activities & Objects
+	"soccer":        "⚽",
+	"basketball":    "🏀",
+	"football":      "🏈",
+	"baseball":      "⚾",
+	"tennis":        "🎾",
+	"8ball":         "🎱",
+	"trophy":        "🏆",
+	"medal":         "🏅",
+	"dart":          "🎯",
+	"guitar":        "🎸",
+	"musical_note":  "🎵",
+	"notes":         "🎶",
+	"headphones":    "🎧",
+	"microphone":    "🎤",
+	"game_die":      "🎲",
+	"dart_board":    "🎯",
+	"video_game":    "🎮",
+	"art":           "🎨",
+	"gift":          "🎁",
+	"birthday_cake": "🎂",
+	"tada":          "🎉",
+	"party":         "🎉",
+	"balloon":       "🎈",
+	"confetti_ball": "🎊",
+
+	// Symbols
+	"100":           "💯",
+	"check":         "✅",
+	"checkmark":     "✅",
+	"x":             "❌",
+	"cross":         "❌",
+	"question":      "❓",
+	"exclamation":   "❗",
+	"warning":       "⚠️",
+	"bangbang":      "‼️",
+	"interrobang":   "⁉️",
+	"sos":           "🆘",
+	"ok":            "🆗",
+	"up":            "🆙",
+	"cool":          "🆒",
+	"new":           "🆕",
+	"free":          "🆓",
+	"zero":          "0️⃣",
+	"one":           "1️⃣",
+	"two":           "2️⃣",
+	"three":         "3️⃣",
+	"four":          "4️⃣",
+	"five":          "5️⃣",
+	"six":           "6️⃣",
+	"seven":         "7️⃣",
+	"eight":         "8️⃣",
+	"nine":          "9️⃣",
+	"keycap_ten":    "🔟",
+	"arrow_up":      "⬆️",
+	"arrow_down":    "⬇️",
+	"arrow_left":    "⬅️",
+	"arrow_right":   "➡️",
+	"arrow_upper_right": "↗️",
+	"arrow_lower_right": "↘️",
+	"arrow_lower_left": "↙️",
+	"arrow_upper_left": "↖️",
+	"heart_exclamation": "❣️",
+	"revolving_hearts": "💞",
+	"heartbeat":     "💓",
+	"heartpulse":    "💗",
+	"sparkling_heart": "💖",
+	"cupid":         "💘",
+	"gift_heart":    "💝",
+	"kiss":          "💋",
+	"ring":          "💍",
+	"gem":           "💎",
+}
+
 type messageInput struct {
 	*tview.TextArea
 	cfg *config.Config
@@ -44,6 +350,7 @@ type messageInput struct {
 	sendMessageData *api.SendMessageData
 	cache           *cache.Cache
 	mentionsList    *tview.List
+	emojiList       *tview.List
 	lastSearch      time.Time
 }
 
@@ -54,6 +361,7 @@ func newMessageInput(cfg *config.Config) *messageInput {
 		sendMessageData: &api.SendMessageData{},
 		cache:           cache.NewCache(),
 		mentionsList:    tview.NewList(),
+		emojiList:       tview.NewList(),
 	}
 	mi.Box = ui.ConfigureBox(mi.Box, &cfg.Theme)
 	mi.SetInputCapture(mi.onInputCapture)
@@ -101,7 +409,12 @@ func (mi *messageInput) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 	case mi.cfg.Keys.MessageInput.Send:
 		if app.chatView.GetVisibile(mentionsListPageName) {
-			mi.tabComplete()
+			// Check which list is active
+			if mi.emojiList.GetItemCount() > 0 {
+				mi.emojiComplete()
+			} else {
+				mi.tabComplete()
+			}
 			return nil
 		}
 
@@ -130,12 +443,18 @@ func (mi *messageInput) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 
 	if mi.cfg.AutocompleteLimit > 0 {
 		if app.chatView.GetVisibile(mentionsListPageName) {
+			// Check which list is active and route navigation to the correct list
+			activeList := mi.mentionsList
+			if mi.emojiList.GetItemCount() > 0 {
+				activeList = mi.emojiList
+			}
+
 			switch event.Name() {
 			case mi.cfg.Keys.MentionsList.Up:
-				mi.mentionsList.InputHandler()(tcell.NewEventKey(tcell.KeyUp, "", tcell.ModNone), nil)
+				activeList.InputHandler()(tcell.NewEventKey(tcell.KeyUp, "", tcell.ModNone), nil)
 				return nil
 			case mi.cfg.Keys.MentionsList.Down:
-				mi.mentionsList.InputHandler()(tcell.NewEventKey(tcell.KeyDown, "", tcell.ModNone), nil)
+				activeList.InputHandler()(tcell.NewEventKey(tcell.KeyDown, "", tcell.ModNone), nil)
 				return nil
 			}
 		}
@@ -314,10 +633,38 @@ func (mi *messageInput) tabComplete() {
 	mi.stopTabCompletion()
 }
 
+func (mi *messageInput) emojiComplete() {
+	posEnd, name, r := mi.GetWordUnderCursor(func(r rune) bool {
+		return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '.'
+	})
+	if r != ':' {
+		mi.stopEmojiCompletion()
+		return
+	}
+	pos := posEnd - (len(name) + 1)
+
+	if mi.emojiList.GetItemCount() == 0 {
+		return
+	}
+	_, shortcode := mi.emojiList.GetItemText(mi.emojiList.GetCurrentItem())
+
+	// Get the emoji from the shortcode
+	if emoji, ok := emojiShortcodes[shortcode]; ok {
+		mi.Replace(pos, posEnd, emoji+" ")
+	}
+	mi.stopEmojiCompletion()
+}
+
 func (mi *messageInput) tabSuggestion() {
 	_, name, r := mi.GetWordUnderCursor(func(r rune) bool {
 		return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '.'
 	})
+
+	if r == ':' {
+		mi.emojiSuggestion(name)
+		return
+	}
+
 	if r != '@' {
 		mi.stopTabCompletion()
 		return
@@ -408,6 +755,87 @@ func (mi *messageInput) tabSuggestion() {
 	}
 
 	mi.showMentionList()
+}
+
+func (mi *messageInput) emojiSuggestion(search string) {
+	mi.emojiList.Clear()
+
+	if search == "" {
+		mi.stopEmojiCompletion()
+		return
+	}
+
+	// Collect matching emojis using fuzzy matching
+	type emojiMatch struct {
+		shortcode string
+		emoji     string
+		score     int
+	}
+
+	var matches []emojiMatch
+	for shortcode, emoji := range emojiShortcodes {
+		// Simple fuzzy match: check if all characters of search appear in order in shortcode
+		if matchScore := fuzzyMatchScore(search, shortcode); matchScore > 0 {
+			matches = append(matches, emojiMatch{shortcode, emoji, matchScore})
+		}
+	}
+
+	// Sort by score (higher is better)
+	slices.SortFunc(matches, func(a, b emojiMatch) int {
+		return b.score - a.score
+	})
+
+	// Limit to autocomplete limit
+	limit := int(mi.cfg.AutocompleteLimit)
+	if limit == 0 {
+		limit = 20
+	}
+	if len(matches) > limit {
+		matches = matches[:limit]
+	}
+
+	// Add matches to the emoji list
+	for _, match := range matches {
+		mi.emojiList.AddItem(fmt.Sprintf("%s  :%s:", match.emoji, match.shortcode), match.shortcode, 0, nil)
+	}
+
+	if mi.emojiList.GetItemCount() == 0 {
+		mi.stopEmojiCompletion()
+		return
+	}
+
+	mi.showEmojiList()
+}
+
+// fuzzyMatchScore returns a score for how well the search matches the target
+// Returns 0 if no match, higher scores for better matches
+func fuzzyMatchScore(search, target string) int {
+	search = strings.ToLower(search)
+	target = strings.ToLower(target)
+
+	// Exact prefix match gets highest score
+	if strings.HasPrefix(target, search) {
+		return 1000 + len(search)
+	}
+
+	// Contains match gets medium score
+	if strings.Contains(target, search) {
+		return 500 + len(search)
+	}
+
+	// Fuzzy match: all characters appear in order
+	searchIdx := 0
+	for _, ch := range target {
+		if searchIdx < len(search) && rune(search[searchIdx]) == ch {
+			searchIdx++
+		}
+	}
+
+	if searchIdx == len(search) {
+		return 100 + searchIdx
+	}
+
+	return 0
 }
 
 type memberList []discord.Member
@@ -561,6 +989,58 @@ func (mi *messageInput) stopTabCompletion() {
 	if mi.cfg.AutocompleteLimit > 0 {
 		mi.mentionsList.Clear()
 		mi.removeMentionsList()
+		mi.stopEmojiCompletion()
+		app.SetFocus(mi)
+	}
+}
+
+func (mi *messageInput) showEmojiList() {
+	borders := 0
+	if mi.cfg.Theme.Border.Enabled {
+		borders = 1
+	}
+	l := mi.emojiList
+	x, _, _, _ := mi.GetInnerRect()
+	_, y, _, _ := mi.GetRect()
+	_, _, maxW, maxH := app.chatView.messagesList.GetInnerRect()
+	if t := int(mi.cfg.Theme.MentionsList.MaxHeight); t != 0 {
+		maxH = min(maxH, t)
+	}
+	count := l.GetItemCount() + borders
+	h := min(count, maxH) + borders + mi.cfg.Theme.Border.Padding[1]
+	y -= h
+	w := int(mi.cfg.Theme.MentionsList.MinWidth)
+	if w == 0 {
+		w = maxW
+	} else {
+		for i := range count - 1 {
+			t, _ := mi.emojiList.GetItemText(i)
+			w = max(w, tview.TaggedStringWidth(t))
+		}
+
+		w = min(w+borders*2, maxW)
+		_, col, _, _ := mi.GetCursor()
+		x += min(col, maxW-w)
+	}
+
+	l.SetRect(x, y, w, h)
+
+	app.chatView.
+		AddAndSwitchToPage(mentionsListPageName, l, false).
+		ShowPage(flexPageName)
+	app.SetFocus(mi)
+}
+
+func (mi *messageInput) removeEmojiList() {
+	app.chatView.
+		RemovePage(mentionsListPageName).
+		SwitchToPage(flexPageName)
+}
+
+func (mi *messageInput) stopEmojiCompletion() {
+	if mi.cfg.AutocompleteLimit > 0 {
+		mi.emojiList.Clear()
+		mi.removeEmojiList()
 		app.SetFocus(mi)
 	}
 }

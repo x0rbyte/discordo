@@ -141,6 +141,7 @@ type (
 		EmojiStyle         StyleWrapper `toml:"emoji_style"`
 		URLStyle           StyleWrapper `toml:"url_style"`
 		AttachmentStyle    StyleWrapper `toml:"attachment_style"`
+		ReactionStyle      StyleWrapper `toml:"reaction_style"`
 	}
 
 	MentionsListTheme struct {

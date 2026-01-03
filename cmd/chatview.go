@@ -18,6 +18,7 @@ const (
 	attachmentsListPageName = "attachmentsList"
 	confirmModalPageName    = "confirmModal"
 	friendsListPageName     = "friendsList"
+	reactionPickerPageName  = "reactionPicker"
 )
 
 type chatView struct {
@@ -227,6 +228,9 @@ func (cv *chatView) onInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	case cv.cfg.Keys.CloseCurrentDM:
 		cv.closeCurrentDM()
 		return nil
+	case cv.cfg.Keys.ToggleMute:
+		cv.toggleMuteCurrentChannel()
+		return nil
 	}
 
 	return event
@@ -343,4 +347,26 @@ func (cv *chatView) closeCurrentDM() {
 			slog.Info("DM channel deleted on Discord", "channel_id", channelID)
 		}
 	}()
+}
+
+func (cv *chatView) toggleMuteCurrentChannel() {
+	// Get the currently selected node from the guilds tree
+	node := cv.guildsTree.GetCurrentNode()
+	if node == nil {
+		slog.Debug("toggleMuteCurrentChannel: no node selected")
+		return
+	}
+
+	ref := node.GetReference()
+
+	// Check if it's a guild or a channel
+	if guildID, ok := ref.(discord.GuildID); ok && guildID.IsValid() {
+		slog.Info("toggling guild mute via Ctrl+M", "guild_id", guildID)
+		go cv.guildsTree.toggleGuildMute(guildID)
+	} else if channelID, ok := ref.(discord.ChannelID); ok && channelID.IsValid() {
+		slog.Info("toggling channel mute via Ctrl+M", "channel_id", channelID)
+		go cv.guildsTree.toggleChannelMute(channelID)
+	} else {
+		slog.Debug("toggleMuteCurrentChannel: selected node is not a guild or channel")
+	}
 }
